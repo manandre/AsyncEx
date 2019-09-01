@@ -19,15 +19,6 @@ namespace Nito.AsyncEx
     public abstract class AsyncStream : Stream
     {
         /// <summary>
-        /// Cancellation token source
-        /// </summary>
-        protected readonly CancellationTokenSource cts = new CancellationTokenSource();
-        /// <summary>
-        /// Asynchronous lock to avoid race conditions
-        /// </summary>
-        protected readonly AsyncLock locker = new AsyncLock();
-
-        /// <summary>
         /// Asynchronously reads a sequence of bytes from the current stream, advances the
         /// position within the stream by the number of bytes read, and monitors cancellation
         /// requests.
@@ -325,14 +316,204 @@ namespace Nito.AsyncEx
             if (disposed)
                 return;
 
-            if (disposing)
-            {                
-                cts.Dispose();
-            }
-
             disposed = true;
             // Call stream class implementation.
             base.Dispose(disposing);
+        }
+
+        /// <summary>
+        /// Synchronized version of an async stream
+        /// </summary>
+        /// <param name="stream">Stream to synchronize</param>
+        /// <returns></returns>
+        public static AsyncStream Synchronized(AsyncStream stream)
+        {
+            if (stream == null)
+            {
+                throw new ArgumentNullException(nameof(stream));
+            }
+            if (stream is AsyncSafeStream)
+            {
+                return stream;
+            }
+
+            return new AsyncSafeStream(stream);
+        }
+
+        private sealed class AsyncSafeStream : AsyncStream
+        {
+            private readonly AsyncStream _stream;
+            private readonly CancellationTokenSource cts = new CancellationTokenSource();
+            private readonly AsyncLock locker = new AsyncLock();
+
+            public AsyncSafeStream(AsyncStream stream)
+            {
+                if (stream == null)
+                {
+                    throw new ArgumentNullException(nameof(stream));
+                }
+
+                _stream = stream;
+            }
+
+            public override bool CanRead => _stream.CanRead;
+
+            public override bool CanWrite => _stream.CanWrite;
+
+            public override bool CanSeek => _stream.CanSeek;
+
+            public override bool CanTimeout => _stream.CanTimeout;
+
+            public override long Length
+            {
+                get
+                {
+                    using (locker.Lock(cts.Token))
+                    {
+                        return _stream.Length;
+                    }
+                }
+            }
+
+            public override long Position
+            {
+                get
+                {
+                    using (locker.Lock(cts.Token))
+                    {
+                        return _stream.Position;
+                    }
+                }
+                set
+                {
+                    using (locker.Lock(cts.Token))
+                    {
+                        _stream.Position = value;
+                    }
+                }
+            }
+
+            public override int ReadTimeout
+            {
+                get
+                {
+                    return _stream.ReadTimeout;
+                }
+                set
+                {
+                    _stream.ReadTimeout = value;
+                }
+            }
+
+            public override int WriteTimeout
+            {
+                get
+                {
+                    return _stream.WriteTimeout;
+                }
+                set
+                {
+                    _stream.WriteTimeout = value;
+                }
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                try
+                {
+                    // Explicitly pick up a potentially methodimpl'ed Dispose
+                    if (disposing)
+                    {
+                        cts.Cancel();
+                        using (locker.Lock())
+                        {
+                            ((IDisposable)_stream).Dispose();
+                        }
+                    }
+                }
+                finally
+                {
+                    base.Dispose(disposing);
+                }
+            }
+
+            public override long Seek(long offset, SeekOrigin origin)
+            {
+                using (locker.Lock(cts.Token))
+                    return _stream.Seek(offset, origin);
+            }
+
+            public override void SetLength(long value)
+            {
+                using (locker.Lock(cts.Token))
+                    _stream.SetLength(value);
+            }
+
+            public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            {
+                var read = 0;
+                var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
+                try
+                {
+                    using (await locker.LockAsync(linkedCts.Token))
+                    {
+                        read = await _stream.ReadAsync(buffer, offset, count, linkedCts.Token);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+                return read;
+            }
+
+            public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            {
+                var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
+                try
+                {
+                    using (await locker.LockAsync(linkedCts.Token))
+                    {
+                        await _stream.WriteAsync(buffer, offset, count, linkedCts.Token);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+            }
+
+            public override async Task FlushAsync(CancellationToken cancellationToken)
+            {
+                var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
+                try
+                {
+                    using (await locker.LockAsync(linkedCts.Token))
+                    {
+                        await _stream.FlushAsync(linkedCts.Token);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// AsyncStream class extensions
+    /// </summary>
+    public static class AsyncStreamExtensions
+    {
+        /// <summary>
+        /// Synchronized version of an async stream
+        /// </summary>
+        /// <param name="stream">Stream to synchronize</param>
+        /// <returns></returns>
+        public static AsyncStream Synchronized(this AsyncStream stream)
+        {
+            return AsyncStream.Synchronized(stream);
         }
     }
 }
