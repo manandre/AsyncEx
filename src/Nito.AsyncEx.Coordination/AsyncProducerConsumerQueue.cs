@@ -14,6 +14,9 @@ namespace Nito.AsyncEx
     [DebuggerDisplay("Count = {_queue.Count}, MaxCount = {_maxCount}")]
     [DebuggerTypeProxy(typeof(AsyncProducerConsumerQueue<>.DebugView))]
     public sealed class AsyncProducerConsumerQueue<T>
+#if NETSTANDARD2_1
+    : IAsyncEnumerable<T>
+#endif
     {
         /// <summary>
         /// The underlying queue.
@@ -259,6 +262,23 @@ namespace Nito.AsyncEx
         {
             return GetConsumingEnumerable(CancellationToken.None);
         }
+
+#if NETSTANDARD2_1
+        /// <summary>
+        /// Provides an asynchronous enumerator for items in the producer/consumer queue.
+        /// </summary>
+        /// <param name="cancellationToken">A cancellation token that can be used to abort the asynchronous enumeration.</param>
+        public async IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+        {
+            while (true)
+            {
+                var result = await TryDoDequeueAsync(cancellationToken, sync: false);
+                if (!result.Item1)
+                    yield break;
+                yield return result.Item2;
+            }
+        }
+#endif
 
         /// <summary>
         /// Attempts to dequeue an item from the producer/consumer queue. Returns <c>false</c> if the producer/consumer queue has completed adding and is empty.

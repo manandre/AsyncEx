@@ -16,6 +16,9 @@ namespace Nito.AsyncEx
     [DebuggerDisplay("Count = {_collection.Count}, MaxCount = {_maxCount}")]
     [DebuggerTypeProxy(typeof(AsyncCollection<>.DebugView))]
     public sealed class AsyncCollection<T>
+#if NETSTANDARD2_1
+    : IAsyncEnumerable<T>
+#endif
     {
         /// <summary>
         /// The underlying collection.
@@ -241,7 +244,28 @@ namespace Nito.AsyncEx
         {
             return GetConsumingEnumerable(CancellationToken.None);
         }
-
+#if NETSTANDARD2_1
+        /// <summary>
+        /// Provides an asynchronous enumerator for items in the producer/consumer collection.
+        /// </summary>
+        /// <param name="cancellationToken">A cancellation token that can be used to abort the asynchronous enumeration.</param>
+        public async IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+        {
+            while (true)
+            {
+                T item;
+                try
+                {
+                    item = await TakeAsync(cancellationToken);
+                }
+                catch (InvalidOperationException)
+                {
+                    yield break;
+                }
+                yield return item;
+            }
+        }
+#endif
         /// <summary>
         /// Attempts to take an item.
         /// </summary>
