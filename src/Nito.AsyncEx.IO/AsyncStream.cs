@@ -303,8 +303,28 @@ namespace Nito.AsyncEx
 
 #endif
 
-        private bool disposed = false;
-        
+#if NETSTANDARD2_1
+        /// <summary>
+        /// Asynchronously releases the unmanaged resources used by the FollowingFileStream and optionally
+        /// releases the managed resources.
+        /// </summary>
+        /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.
+        ///</param>
+        protected virtual ValueTask DisposeAsync(bool disposing) => default;
+
+        /// <summary>
+        /// Asynchronously releases all resources used by the AsyncStream.
+        /// </summary>
+        public sealed override ValueTask DisposeAsync() => DisposeAsync(true);
+
+        /// <summary>
+        /// Releases the unmanaged resources used by the FollowingFileStream and optionally
+        /// releases the managed resources.
+        /// </summary>
+        /// <param name="disposing">true to release both managed and unmanaged resources; false to release only unmanaged resources.
+        ///</param>
+        protected sealed override void Dispose(bool disposing) => DisposeAsync(disposing).GetAwaiter().GetResult();
+#else        
         /// <summary>
         /// Releases the unmanaged resources used by the FollowingFileStream and optionally
         /// releases the managed resources.
@@ -313,14 +333,10 @@ namespace Nito.AsyncEx
         ///</param>
         protected override void Dispose(bool disposing)
         {
-            if (disposed)
-                return;
-
-            disposed = true;
             // Call stream class implementation.
             base.Dispose(disposing);
         }
-
+#endif
         /// <summary>
         /// Synchronized version of an async stream
         /// </summary>
@@ -417,8 +433,37 @@ namespace Nito.AsyncEx
                 }
             }
 
+            private bool disposed = false;
+#if NETSTANDARD2_1
+            protected override async ValueTask DisposeAsync(bool disposing)
+            {
+                if (disposed)
+                    return;
+                
+                try
+                {
+                    // Explicitly pick up a potentially methodimpl'ed DisposeAsync
+                    if (disposing)
+                    {
+                        cts.Cancel();
+                        using (await locker.LockAsync())
+                        {
+                            await ((IAsyncDisposable)_stream).DisposeAsync();
+                        }
+                    }
+                }
+                finally
+                {
+                    disposed = true;
+                    await base.DisposeAsync(disposing);
+                }
+            }
+#else
             protected override void Dispose(bool disposing)
             {
+                if (disposed)
+                    return;
+                
                 try
                 {
                     // Explicitly pick up a potentially methodimpl'ed Dispose
@@ -433,10 +478,11 @@ namespace Nito.AsyncEx
                 }
                 finally
                 {
+                    disposed = true;
                     base.Dispose(disposing);
                 }
             }
-
+#endif
             public override long Seek(long offset, SeekOrigin origin)
             {
                 using (locker.Lock(cts.Token))
