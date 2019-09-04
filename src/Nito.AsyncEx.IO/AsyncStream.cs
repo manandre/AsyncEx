@@ -170,7 +170,7 @@ namespace Nito.AsyncEx
             FlushAsync().WaitAndUnwrapException();
         }
 
-#if NETSTANDARD2_0
+#if !NETSTANDARD1_3
 
         /// <summary>
         /// Begins an asynchronous read operation. (Consider using AsyncStream.ReadAsync(System.Byte[],System.Int32,System.Int32,System.Threading.CancellationToken)
