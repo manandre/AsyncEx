@@ -20,7 +20,7 @@ namespace UnitTests
             var read = sut.Object.Read(null, 0 , 0);
             Assert.Equal(expected, read);
 
-#if NETSTANDARD2_0
+#if !NETSTANDARD1_3
             read = sut.Object.EndRead(sut.Object.BeginRead(null, 0, 0, null, null));
             Assert.Equal(expected, read);
 #endif
@@ -35,7 +35,7 @@ namespace UnitTests
             sut.Object.Write(null, 0 , 0);
             sut.Verify(x => x.WriteAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
 
-#if NETSTANDARD2_0
+#if !NETSTANDARD1_3
             sut.Object.EndWrite(sut.Object.BeginWrite(null, 0, 0, null, null));
             sut.Verify(x => x.WriteAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
 #endif
