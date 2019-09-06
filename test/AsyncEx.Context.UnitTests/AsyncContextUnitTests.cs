@@ -1,12 +1,9 @@
-﻿using System;
-using System.Threading.Tasks;
-using Nito.AsyncEx;
-using System.Linq;
-using System.Threading;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
-using Xunit;
+﻿using Nito.AsyncEx;
 using Nito.AsyncEx.Testing;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Xunit;
 
 namespace UnitTests
 {
@@ -18,6 +15,15 @@ namespace UnitTests
             var testThread = Thread.CurrentThread.ManagedThreadId;
             var contextThread = AsyncContext.Run(() => Thread.CurrentThread.ManagedThreadId);
             Assert.Equal(testThread, contextThread);
+        }
+
+        [Fact]
+        public void Run_Null_Throws()
+        {
+            Assert.Throws<ArgumentNullException>(() => AsyncContext.Run(null));
+            Assert.Throws<ArgumentNullException>(() => AsyncContext.Run((Action)null));
+            Assert.Throws<ArgumentNullException>(() => AsyncContext.Run<object>(null));
+            Assert.Throws<ArgumentNullException>(() => AsyncContext.Run<object>((Func<object>)null));
         }
 
         [Fact]
