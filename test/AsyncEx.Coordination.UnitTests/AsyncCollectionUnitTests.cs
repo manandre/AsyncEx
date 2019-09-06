@@ -1,13 +1,11 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nito.AsyncEx;
-using System.Linq;
-using System.Threading;
-using System.Diagnostics.CodeAnalysis;
-using Xunit;
 using Nito.AsyncEx.Testing;
-using System.Collections.Concurrent;
+using Xunit;
 
 namespace UnitTests
 {
