@@ -64,7 +64,7 @@ namespace UnitTests
         {
             Assert.Throws<ArgumentNullException>(() => AsyncStream.Synchronized(null));
             var sut = new Mock<AsyncStream>() { CallBase = true };
-            var synchronized = AsyncStream.Synchronized(sut.Object);
+            var synchronized = sut.Object.Synchronized();
             Assert.NotNull(synchronized);
             Assert.Same(synchronized, AsyncStream.Synchronized(synchronized));
 
@@ -125,6 +125,11 @@ namespace UnitTests
             Assert.Equal(expected_offset, result_offset);
             Assert.Equal(expected_origin, result_origin);
 
+            // Length
+            expected2 = 42;
+            sut.Setup(x => x.Length).Returns(expected2);
+            Assert.Equal(expected2, synchronized.Length);
+
             // SetLength
             var expected_length = 42;
             var result_length = 0L;
@@ -142,6 +147,7 @@ namespace UnitTests
             Assert.Equal(expected2, read);
             read = synchronized.EndRead(synchronized.BeginRead(null, 0, 0, null, null));
             Assert.Equal(expected2, read);
+            Assert.ThrowsAsync<OperationCanceledException>(() => synchronized.ReadAsync(null, 0, 0, new CancellationToken(true)));
 
             // Write
             synchronized.WriteAsync(null, 0, 0).Wait();
@@ -157,8 +163,10 @@ namespace UnitTests
             sut.Protected().Verify<Task>("DoFlushAsync", Times.Once(), ItExpr.IsAny<CancellationToken>(), false);
             synchronized.Flush();
             sut.Protected().Verify<Task>("DoFlushAsync", Times.Once(), ItExpr.IsAny<CancellationToken>(), true);
-
             Assert.ThrowsAsync<OperationCanceledException>(() => synchronized.FlushAsync(new CancellationToken(true)));
+
+            // Dispose
+            synchronized.Dispose();
         }
     }
 }
