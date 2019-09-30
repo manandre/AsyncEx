@@ -1,10 +1,12 @@
 using Nito.AsyncEx;
 using Moq;
+using Moq.Protected;
 using System.Threading;
 using Xunit;
 using System.Linq.Expressions;
 using System;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace UnitTests
 {
@@ -15,13 +17,15 @@ namespace UnitTests
         {
             var sut = new Mock<AsyncStream>() { CallBase = true };
             var expected = 42;
-            sut.Setup(x => x.ReadAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            sut.Protected().Setup<Task<int>>("DoReadAsync", ItExpr.IsAny<byte[]>(), ItExpr.IsAny<int>(), ItExpr.IsAny<int>(), ItExpr.IsAny<CancellationToken>(), ItExpr.IsAny<bool>())
             .ReturnsAsync(expected);
             var read = sut.Object.Read(null, 0 , 0);
+            sut.Protected().Verify("DoReadAsync", Times.Once(), ItExpr.IsAny<byte[]>(), ItExpr.IsAny<int>(), ItExpr.IsAny<int>(), ItExpr.IsAny<CancellationToken>(), true);
             Assert.Equal(expected, read);
 
 #if !NETSTANDARD1_3
             read = sut.Object.EndRead(sut.Object.BeginRead(null, 0, 0, null, null));
+            sut.Protected().Verify("DoReadAsync", Times.Once(), ItExpr.IsAny<byte[]>(), ItExpr.IsAny<int>(), ItExpr.IsAny<int>(), ItExpr.IsAny<CancellationToken>(), false);
             Assert.Equal(expected, read);
 #endif
         }
@@ -30,14 +34,12 @@ namespace UnitTests
         public void AS_Write()
         {
             var sut = new Mock<AsyncStream>() { CallBase = true };
-            sut.Setup(x => x.WriteAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .Verifiable();
             sut.Object.Write(null, 0 , 0);
-            sut.Verify(x => x.WriteAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+            sut.Protected().Verify("DoWriteAsync", Times.Once(), ItExpr.IsAny<byte[]>(), ItExpr.IsAny<int>(), ItExpr.IsAny<int>(), ItExpr.IsAny<CancellationToken>(), true);
 
 #if !NETSTANDARD1_3
             sut.Object.EndWrite(sut.Object.BeginWrite(null, 0, 0, null, null));
-            sut.Verify(x => x.WriteAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+            sut.Protected().Verify("DoWriteAsync", Times.Once(), ItExpr.IsAny<byte[]>(), ItExpr.IsAny<int>(), ItExpr.IsAny<int>(), ItExpr.IsAny<CancellationToken>(), false);
 #endif
         }
 
@@ -45,9 +47,8 @@ namespace UnitTests
         public void AS_Flush()
         {
             var sut = new Mock<AsyncStream>() { CallBase = true };
-            sut.Setup(x => x.FlushAsync(It.IsAny<CancellationToken>())).Verifiable();
             sut.Object.Flush();
-            sut.Verify(x => x.FlushAsync(It.IsAny<CancellationToken>()), Times.Once);
+            sut.Protected().Verify<Task>("DoFlushAsync", Times.Once(), ItExpr.IsAny<CancellationToken>(), true);
         }
 
         [Fact]
@@ -133,7 +134,7 @@ namespace UnitTests
             Assert.Equal(expected_length, result_length);
 
             // Read
-            sut.Setup(x => x.ReadAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            sut.Protected().Setup<Task<int>>("DoReadAsync", ItExpr.IsNull<byte[]>(), ItExpr.IsAny<int>(), ItExpr.IsAny<int>(), ItExpr.IsAny<CancellationToken>(), ItExpr.IsAny<bool>())
             .ReturnsAsync(expected2);
             var read = synchronized.ReadAsync(null, 0, 0).Result;
             Assert.Equal(expected2, read);
@@ -143,22 +144,19 @@ namespace UnitTests
             Assert.Equal(expected2, read);
 
             // Write
-            sut.Setup(x => x.WriteAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .Verifiable();
             synchronized.WriteAsync(null, 0, 0).Wait();
-            sut.Verify(x => x.WriteAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+            sut.Protected().Verify("DoWriteAsync", Times.Once(), ItExpr.IsNull<byte[]>(), ItExpr.IsAny<int>(), ItExpr.IsAny<int>(), ItExpr.IsAny<CancellationToken>(), false);
             synchronized.Write(null, 0, 0);
-            sut.Verify(x => x.WriteAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
+            sut.Protected().Verify("DoWriteAsync", Times.Once(), ItExpr.IsNull<byte[]>(), ItExpr.IsAny<int>(), ItExpr.IsAny<int>(), ItExpr.IsAny<CancellationToken>(), true);
             synchronized.EndWrite(synchronized.BeginWrite(null, 0, 0, null, null));
-            sut.Verify(x => x.WriteAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Exactly(3));
+            sut.Protected().Verify("DoWriteAsync", Times.Exactly(2), ItExpr.IsNull<byte[]>(), ItExpr.IsAny<int>(), ItExpr.IsAny<int>(), ItExpr.IsAny<CancellationToken>(), false);
             Assert.ThrowsAsync<OperationCanceledException>(() => synchronized.WriteAsync(null, 0, 0, new CancellationToken(true)));
 
-            // Async
-            sut.Setup(x => x.FlushAsync(It.IsAny<CancellationToken>())).Verifiable();
+            // Flush
             synchronized.FlushAsync().Wait();
-            sut.Verify(x => x.FlushAsync(It.IsAny<CancellationToken>()), Times.Once);
+            sut.Protected().Verify<Task>("DoFlushAsync", Times.Once(), ItExpr.IsAny<CancellationToken>(), false);
             synchronized.Flush();
-            sut.Verify(x => x.FlushAsync(It.IsAny<CancellationToken>()), Times.Exactly(2));
+            sut.Protected().Verify<Task>("DoFlushAsync", Times.Once(), ItExpr.IsAny<CancellationToken>(), true);
 
             Assert.ThrowsAsync<OperationCanceledException>(() => synchronized.FlushAsync(new CancellationToken(true)));
         }

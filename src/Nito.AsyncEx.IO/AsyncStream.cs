@@ -14,10 +14,47 @@ namespace Nito.AsyncEx
     /// </summary>
     /// <remarks>
     /// It can be used to expose a System.IO.Stream class
-    /// by implementing only the asynchronous operations: ReadAsync, WriteAsync and FlushAsync 
+    /// by implementing only the asynchronous operations: DoReadAsync, DoWriteAsync and DoFlushAsync 
     /// </remarks>
     public abstract class AsyncStream : Stream
     {
+        /// <summary>
+        /// Asynchronously reads a sequence of bytes from the current stream, advances the
+        /// position within the stream by the number of bytes read, and monitors cancellation
+        /// requests. 
+        /// </summary>
+        /// <param name="buffer">The buffer to write the data into.</param>
+        /// <param name="offset">The byte offset in buffer at which to begin writing data from the stream.</param>
+        /// <param name="count">The maximum number of bytes to read.</param>
+        /// <param name="cancellationToken">The token to monitor for cancellation requests.</param>
+        /// <param name="sync">If enabled, returns an already-completed task</param>
+        /// <returns>
+        /// A task that represents the asynchronous read operation. The value of the TResult
+        /// parameter contains the total number of bytes read into the buffer. The result
+        /// value can be less than the number of bytes requested if the number of bytes currently
+        /// available is less than the requested number, or it can be 0 (zero) if the end
+        /// of the stream has been reached.
+        /// </returns>
+        /// <exception cref="System.ArgumentNullException">
+        /// buffer is null.
+        /// </exception>
+        /// <exception cref="System.ArgumentException">
+        /// offset and count describe an invalid range in array.
+        /// </exception>
+        /// <exception cref="System.NotSupportedException">
+        /// FollowingFileStream.CanRead for this stream is false.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// The stream is currently in use by a previous read operation.
+        /// </exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">
+        /// offset or count is negative.
+        /// </exception>
+        /// <exception cref="System.ObjectDisposedException">
+        /// Methods were called after the stream was closed.
+        /// </exception>
+        protected abstract Task<int> DoReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken, bool sync);
+
         /// <summary>
         /// Asynchronously reads a sequence of bytes from the current stream, advances the
         /// position within the stream by the number of bytes read, and monitors cancellation
@@ -52,47 +89,9 @@ namespace Nito.AsyncEx
         /// <exception cref="System.ObjectDisposedException">
         /// Methods were called after the stream was closed.
         /// </exception>
-        public abstract override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken);
-
-        /// <summary>
-        /// Asynchronously writes a sequence of bytes to the current stream, advances the
-        /// current position within this stream by the number of bytes written, and monitors
-        /// cancellation requests.
-        /// </summary>
-        /// <param name="buffer">An array of bytes. This method copies count bytes from buffer to the current stream.</param>
-        /// <param name="offset">The zero-based byte offset in buffer at which to begin copying bytes to the current stream.</param>
-        /// <param name="count">The number of bytes to be written to the current stream.</param>
-        /// <param name="cancellationToken">The token to monitor for cancellation requests. The default value is System.Threading.CancellationToken.None.</param>
-        /// <returns></returns>
-        /// <exception cref="System.ArgumentNullException">
-        /// buffer is null.
-        /// </exception>
-        /// <exception cref="System.ArgumentException">
-        /// offset and count describe an invalid range in array.
-        /// </exception>
-        /// <exception cref="System.NotSupportedException">
-        /// AsyncStream.CanWrite for this stream is false.
-        /// </exception>
-        /// <exception cref="System.ArgumentOutOfRangeException">
-        /// offset or count is negative.
-        /// </exception>
-        /// <exception cref="System.ObjectDisposedException">
-        /// Methods were called after the stream was closed.
-        /// </exception>
-        /// <exception cref="System.InvalidOperationException">
-        /// The stream is currently in use by a previous write operation.
-        /// </exception>
-        public abstract override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken);
-
-        /// <summary>
-        /// Asynchronously clears all buffers for this stream, causes any buffered data to
-        /// be written to the underlying device, and monitors cancellation requests.
-        /// </summary>
-        /// <param name="cancellationToken">The token to monitor for cancellation requests.
-        /// The default value is System.Threading.CancellationToken.None.</param>
-        /// <returns>A task that represents the asynchronous flush operation.</returns>
-        public abstract override Task FlushAsync(CancellationToken cancellationToken);
-
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        => DoReadAsync(buffer, offset, count, cancellationToken, sync: false);
+        
         /// <summary>
         /// Reads a block of bytes from the stream and writes the data in a given buffer.
         /// </summary>
@@ -123,10 +122,71 @@ namespace Nito.AsyncEx
         /// <exception cref="System.ObjectDisposedException">
         /// Methods were called after the stream was closed.
         /// </exception>
-        public sealed override int Read(byte[] buffer, int offset, int count)
-        {
-            return ReadAsync(buffer, offset, count, CancellationToken.None).WaitAndUnwrapException();
-        }
+        public override int Read(byte[] buffer, int offset, int count)
+        => DoReadAsync(buffer, offset, count, CancellationToken.None, sync: true).WaitAndUnwrapException();
+
+        /// <summary>
+        /// Asynchronously writes a sequence of bytes to the current stream, advances the
+        /// current position within this stream by the number of bytes written, and monitors
+        /// cancellation requests.
+        /// </summary>
+        /// <param name="buffer">An array of bytes. This method copies count bytes from buffer to the current stream.</param>
+        /// <param name="offset">The zero-based byte offset in buffer at which to begin copying bytes to the current stream.</param>
+        /// <param name="count">The number of bytes to be written to the current stream.</param>
+        /// <param name="cancellationToken">The token to monitor for cancellation requests.
+        /// The default value is System.Threading.CancellationToken.None.</param>
+        /// <param name="sync">If enabled, returns an already-completed task</param>
+        /// <returns>A task that represents the asynchronous write operation.</returns>
+        /// <exception cref="System.ArgumentNullException">
+        /// buffer is null.
+        /// </exception>
+        /// <exception cref="System.ArgumentException">
+        /// offset and count describe an invalid range in array.
+        /// </exception>
+        /// <exception cref="System.NotSupportedException">
+        /// AsyncStream.CanWrite for this stream is false.
+        /// </exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">
+        /// offset or count is negative.
+        /// </exception>
+        /// <exception cref="System.ObjectDisposedException">
+        /// Methods were called after the stream was closed.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// The stream is currently in use by a previous write operation.
+        /// </exception>
+        protected abstract Task DoWriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken, bool sync);
+
+        /// <summary>
+        /// Asynchronously writes a sequence of bytes to the current stream, advances the
+        /// current position within this stream by the number of bytes written, and monitors
+        /// cancellation requests.
+        /// </summary>
+        /// <param name="buffer">An array of bytes. This method copies count bytes from buffer to the current stream.</param>
+        /// <param name="offset">The zero-based byte offset in buffer at which to begin copying bytes to the current stream.</param>
+        /// <param name="count">The number of bytes to be written to the current stream.</param>
+        /// <param name="cancellationToken">The token to monitor for cancellation requests. The default value is System.Threading.CancellationToken.None.</param>
+        /// <returns>A task that represents the asynchronous write operation.</returns>
+        /// <exception cref="System.ArgumentNullException">
+        /// buffer is null.
+        /// </exception>
+        /// <exception cref="System.ArgumentException">
+        /// offset and count describe an invalid range in array.
+        /// </exception>
+        /// <exception cref="System.NotSupportedException">
+        /// AsyncStream.CanWrite for this stream is false.
+        /// </exception>
+        /// <exception cref="System.ArgumentOutOfRangeException">
+        /// offset or count is negative.
+        /// </exception>
+        /// <exception cref="System.ObjectDisposedException">
+        /// Methods were called after the stream was closed.
+        /// </exception>
+        /// <exception cref="System.InvalidOperationException">
+        /// The stream is currently in use by a previous write operation.
+        /// </exception>
+        public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+        => DoWriteAsync(buffer, offset, count, cancellationToken, sync: false);
 
         /// <summary>
         /// Writes a sequence of bytes to the current stream and advances the current position within this stream
@@ -153,10 +213,28 @@ namespace Nito.AsyncEx
         /// <exception cref="System.ObjectDisposedException">
         /// Methods were called after the stream was closed.
         /// </exception>
-        public sealed override void Write(byte[] buffer, int offset, int count)
-        {
-            WriteAsync(buffer, offset, count, CancellationToken.None).WaitAndUnwrapException();
-        }
+        public override void Write(byte[] buffer, int offset, int count)
+        => DoWriteAsync(buffer, offset, count, CancellationToken.None, sync: true).WaitAndUnwrapException();
+
+        /// <summary>
+        /// Asynchronously clears all buffers for this stream, causes any buffered data to
+        /// be written to the underlying device, and monitors cancellation requests.
+        /// </summary>
+        /// <param name="cancellationToken">The token to monitor for cancellation requests.
+        /// The default value is System.Threading.CancellationToken.None.</param>
+        /// <param name="sync">If enabled, returns an already-completed task</param>
+        /// <returns>A task that represents the asynchronous flush operation.</returns>
+        protected abstract Task DoFlushAsync(CancellationToken cancellationToken, bool sync);
+
+        /// <summary>
+        /// Asynchronously clears all buffers for this stream, causes any buffered data to
+        /// be written to the underlying device, and monitors cancellation requests.
+        /// </summary>
+        /// <param name="cancellationToken">The token to monitor for cancellation requests.
+        /// The default value is System.Threading.CancellationToken.None.</param>
+        /// <returns>A task that represents the asynchronous flush operation.</returns>
+        public override Task FlushAsync(CancellationToken cancellationToken)
+        => DoFlushAsync(cancellationToken, sync: false);
 
         /// <summary>
         /// Clears all buffers for this stream and causes
@@ -165,10 +243,8 @@ namespace Nito.AsyncEx
         /// <exception cref="System.IO.IOException">
         /// The stream is closed or an internal error has occurred.
         /// </exception>
-        public sealed override void Flush()
-        {
-            FlushAsync().WaitAndUnwrapException();
-        }
+        public override void Flush()
+        => DoFlushAsync(CancellationToken.None, sync: true).WaitAndUnwrapException();
 
 #if !NETSTANDARD1_3
 
@@ -202,13 +278,11 @@ namespace Nito.AsyncEx
         /// An asynchronous read was attempted past the end of the file.
         /// </exception>
         public sealed override IAsyncResult BeginRead(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
-        {
-            return ApmAsyncFactory.ToBegin(
+        =>  ApmAsyncFactory.ToBegin(
                 ReadAsync(buffer, offset, count, CancellationToken.None),
                 callback,
                 state
             );
-        }
 
         /// <summary>
         /// Begins an asynchronous write operation. (Consider using AsyncStream.WriteAsync(System.Byte[],System.Int32,System.Int32,System.Threading.CancellationToken)
@@ -240,13 +314,11 @@ namespace Nito.AsyncEx
         /// An asynchronous write was attempted past the end of the file.
         /// </exception>
         public sealed override IAsyncResult BeginWrite(byte[] buffer, int offset, int count, AsyncCallback callback, object state)
-        {
-            return ApmAsyncFactory.ToBegin(
+        =>  ApmAsyncFactory.ToBegin(
                 WriteAsync(buffer, offset, count, CancellationToken.None),
                 callback,
                 state
             );
-        }
 
         /// <summary>
         /// Waits for the pending asynchronous read operation to complete. (Consider using
@@ -273,9 +345,7 @@ namespace Nito.AsyncEx
         /// The stream is closed or an internal error has occurred.
         /// </exception>
         public sealed override int EndRead(IAsyncResult asyncResult)
-        {
-            return ApmAsyncFactory.ToEnd<int>(asyncResult);
-        }
+        =>  ApmAsyncFactory.ToEnd<int>(asyncResult);
 
         /// <summary>
         /// Waits for the pending asynchronous write operation to complete. (Consider using
@@ -297,9 +367,7 @@ namespace Nito.AsyncEx
         /// The stream is closed or an internal error has occurred.
         /// </exception>
         public sealed override void EndWrite(IAsyncResult asyncResult)
-        {
-            ApmAsyncFactory.ToEnd(asyncResult);
-        }
+        => ApmAsyncFactory.ToEnd(asyncResult);
 
 #endif
 
@@ -449,15 +517,15 @@ namespace Nito.AsyncEx
                     _stream.SetLength(value);
             }
 
-            public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            protected override async Task<int> DoReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken, bool sync)
             {
                 var read = 0;
                 var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
                 try
                 {
-                    using (await locker.LockAsync(linkedCts.Token))
+                    using (sync ? locker.Lock(linkedCts.Token) : await locker.LockAsync(linkedCts.Token).ConfigureAwait(false))
                     {
-                        read = await _stream.ReadAsync(buffer, offset, count, linkedCts.Token);
+                        read = await _stream.DoReadAsync(buffer, offset, count, linkedCts.Token, sync);
                     }
                 }
                 catch (OperationCanceledException)
@@ -467,14 +535,14 @@ namespace Nito.AsyncEx
                 return read;
             }
 
-            public override async Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            protected override async Task DoWriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken, bool sync)
             {
                 var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
                 try
                 {
-                    using (await locker.LockAsync(linkedCts.Token))
+                    using (sync ? locker.Lock(linkedCts.Token) : await locker.LockAsync(linkedCts.Token).ConfigureAwait(false))
                     {
-                        await _stream.WriteAsync(buffer, offset, count, linkedCts.Token);
+                        await _stream.DoWriteAsync(buffer, offset, count, linkedCts.Token, sync);
                     }
                 }
                 catch (OperationCanceledException)
@@ -483,14 +551,14 @@ namespace Nito.AsyncEx
                 }
             }
 
-            public override async Task FlushAsync(CancellationToken cancellationToken)
+            protected override async Task DoFlushAsync(CancellationToken cancellationToken, bool sync)
             {
                 var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
                 try
                 {
-                    using (await locker.LockAsync(linkedCts.Token))
+                    using (sync ? locker.Lock(linkedCts.Token) : await locker.LockAsync(linkedCts.Token).ConfigureAwait(false))
                     {
-                        await _stream.FlushAsync(linkedCts.Token);
+                        await _stream.DoFlushAsync(linkedCts.Token, sync);
                     }
                 }
                 catch (OperationCanceledException)
